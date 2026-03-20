@@ -19,7 +19,8 @@ license = "MIT"
 keywords = ["inventree", "plugin"]
 requires-python = ">=3.9"
 dependencies = [
-    # Enter your plugin library dependencies here
+    "djangorestframework",
+    "tablib",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -34,7 +35,7 @@ export-packing-list = "export_packing_list.ExportPackingList:ExportPackingList"
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "export_packing_list.ExportPackingList.PLUGIN_VERSION"}
+version = {attr = "export_packing_list.PLUGIN_VERSION"}
 
 [tool.ruff]
 exclude = [
