@@ -28,13 +28,13 @@ classifiers = [
 ]
 
 [project.entry-points."inventree_plugins"]
-ExportPackingList = "export_packing_list.core:ExportPackingList"
+export-packing-list = "export_packing_list.ExportPackingList:ExportPackingList"
 
 [tool.setuptools.packages.find]
-where = [""]
+where = ["src"]
 
 [tool.setuptools.dynamic]
-version = {attr = "export_packing_list.PLUGIN_VERSION"} 
+version = {attr = "export_packing_list.ExportPackingList.PLUGIN_VERSION"}
 
 [tool.ruff]
 exclude = [
@@ -47,5 +47,3 @@ exclude = [
     ".venv",
     ".env",
 ]
-
-src=["export_packing_list"]

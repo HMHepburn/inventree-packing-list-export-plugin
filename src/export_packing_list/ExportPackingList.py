@@ -1,10 +1,5 @@
-from plugin import InvenTreePlugin
-
-from build.models import BuildItem
-from build.serializers import BuildItemSerializer
-
 import rest_framework.serializers as serializers
-
+from plugin import InvenTreePlugin
 from plugin.mixins import DataExportMixin
 
 from . import PLUGIN_VERSION
@@ -29,25 +24,23 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
     SLUG = "export-packing-list"
     DESCRIPTION = "Plugin designed to add additional exported data for InvenTree BOs"
     VERSION = PLUGIN_VERSION
+    MIN_VERSION = '0.15.0'
 
     # Additional project information
     AUTHOR = "Hannah Hepburn"
-
     LICENSE = "MIT"
-
-    # Optionally specify supported InvenTree versions
-    # MIN_VERSION = '0.18.0'
-    # MAX_VERSION = '2.0.0'
 
     ExportOptionsSerializer = BuildOrderExporterOptionsSerializer
 
     # Only display export option when downloading from 'allocated stock' tab
     def supports_export(self, model_class: type, user, *args, **kwargs) -> bool:
-        return (
-            model_class == BuildItem
-            and kwargs.get("serializer_class") == BuildItemSerializer
-        )
+        from build.models import BuildItem
 
+        return issubclass(model_class, BuildItem)
+
+    def get_export_formats(self):
+        return ['csv', 'xlsx']
+    
     def update_headers(self, headers, context, **kwargs):
         """Update headers for the packing list export."""
 
@@ -146,6 +139,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         """
         # Add this row to the output dataset
         row = self.serializer_class(build_item, exporting=True).data
+        price = build_item.stock_item.purchase_price
 
         row["required_quantity"] = build_item.build_line.quantity
 
@@ -158,13 +152,18 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         row["part_name"] = build_item.bom_item.sub_part.name
         # row['value'] = build_item.build_line.bom_item.part
         row["value"] = ""
-        row["stock_location"] = build_item.stock_item.location.name
+        row["stock_location"] = build_item.stock_item.location.name if build_item.stock_item.location else ""
         row["part_category"] = build_item.build_line.bom_item.sub_part.category.name
         row["stock_item_quantity"] = build_item.stock_item.quantity
-        row["unit_price"] = build_item.stock_item.purchase_price
+        row["unit_price"] = price
         row["batch_code"] = build_item.stock_item.batch
         row["stock_item_packaging"] = build_item.stock_item.packaging
-        row["notes"] = ""
+
+        if price and hasattr(price, 'amount'):
+            row["notes"] = "EXPENSIVE PART"
+        else:
+            row["notes"] = ""
+            
         row["part_description"] = build_item.build_line.bom_item.sub_part.description
 
         self.build_data.append(row)

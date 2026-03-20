@@ -1,0 +1,1 @@
+from .ExportPackingList import PLUGIN_VERSION
