@@ -16,6 +16,17 @@ To install manually via the command line, run the following command:
 ```bash
 pip install inventree-export-packing-list
 ```
+
+### InvenTree Plugin Installer
+
+1. Navigate to **Admin Center > Plugins**.
+2. Press **Install Plugin** to open the Plugin Installation wizard.
+- Package Name: **inventree-export-packing-list**
+- Source URL: **git+https://github.com/HMHepburn/inventree-packing-list-export-plugin**
+- Version: Leave this blank
+3. Toggle **Confirm plugin installation**
+4. Press **Install**
+
 ## Verification
 
 To verify the plugin is working:
