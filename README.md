@@ -2,6 +2,11 @@
 
 Plugin designed to add additional exported data for InvenTree BOs
 
+## How to Use
+
+When stock has been allocated to a project, you may navigate to the 'allocations' tab in a build order and download the packing list using this exporter.
+Press 'download' as you would usually when downloading a CSV for table data. Choose 'ExportPackingList' instead of 'InvenTreeExporter'. You may toggle on the option to include all data typically associated with the allocations CSV, or leave the option untoggled for the raw formatted packing list.
+
 ### InvenTree Plugin Manager
 
 1. Install this plugin in the webinterface with the packagename 'inventree-export-packing-list'
