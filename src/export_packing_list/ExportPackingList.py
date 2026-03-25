@@ -82,7 +82,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         headers["unit_price"] = "Unit Price"
 
         # Append a 'batch_code' field
-        headers["batch_code"] = "IPN"
+        headers["batch_code"] = "PV IPN"
 
         # Append a 'stock_item_packaging' field
         headers["stock_item_packaging"] = "Condition/Packaging"
