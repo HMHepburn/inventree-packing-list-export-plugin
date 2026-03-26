@@ -160,7 +160,9 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         row["stock_item_packaging"] = build_item.stock_item.packaging
 
         if price and hasattr(price, 'amount'):
-            row["notes"] = "EXPENSIVE PART"
+            unit_price = price.amount
+            if(unit_price > 10):
+                row["notes"] = "EXPENSIVE PART"
         else:
             row["notes"] = ""
             
