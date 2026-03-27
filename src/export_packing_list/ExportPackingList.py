@@ -141,7 +141,10 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         row = self.serializer_class(build_item, exporting=True).data
         price = build_item.stock_item.purchase_price
 
-        row["required_quantity"] = build_item.build_line.quantity
+        # There are setup and overages that may be applied to builds, deviating build required quantity from BOM quantity
+        # To get true net required quantity for production, multiply BOM quantity with build quantity
+        req_quantity = build_item.build.quantity * build_item.bom_item.quantity
+        row["required_quantity"] = req_quantity
 
         # in instances where a stock item doesn't have an associated supplier part
         if build_item.stock_item.supplier_part:
