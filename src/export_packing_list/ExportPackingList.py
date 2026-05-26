@@ -64,10 +64,8 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         # Append a 'parameter_value' field
         headers["parameter_value"] = "Value"
 
-        # Append part parameter columns - use when we've implemented part params for value
-        # if self.export_parameter_data and len(self.parameters) > 0:
-        #     for key, value in self.parameters.items():
-        #         headers[f'parameter_{key}'] = value
+        # Append a 'PF' field
+        headers["PF"] = "Press Fit"
 
         # Append a 'stock_location' field
         headers["stock_location"] = "Location"
@@ -84,6 +82,9 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         # Append a 'batch_code' field
         headers["batch_code"] = "PV IPN"
 
+        # Append a box field - to be filled in manually by person kitting.
+        headers["box"] = "Box"
+
         # Append a 'stock_item_packaging' field
         headers["stock_item_packaging"] = "Condition/Packaging"
 
@@ -94,13 +95,6 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         headers["part_description"] = "Part Description"
 
         return headers
-
-        # Attributes:
-        #         build: Link to a Build object
-        #         build_line: Link to a BuildLine object (this is a "line item" within a build)
-        #         stock_item: Link to a StockItem object
-        #         quantity: Number of units allocated
-        #         install_into: Destination stock item (or None)
 
     def prefetch_queryset(self, queryset):
         # Perform pre-fetch on the provided queryset.
@@ -131,57 +125,82 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
 
         return self.build_data
 
+    def get_parameter_value(self, build_item, category):
+        part = build_item.stock_item.part
+        if not part:
+            return "", ""
+
+        part_data = part.report_context()
+        parameters = part_data['parameters']
+
+        # Initialize default values
+        value_str = ""
+        is_pf = ""
+
+        # 1. Handle component values based on Category
+        if category == 'Capacitors' and 'Capacitance' in parameters:
+            value_str = parameters['Capacitance']
+        elif category == 'Resistors' and 'Resistance' in parameters:
+            value_str = parameters['Resistance']
+        elif category == 'Inductors' and 'Inductance' in parameters:
+            value_str = parameters['Inductance']
+
+        # 2. Handle Press Fit parameter (can apply to Connectors or any other category)
+        if 'Press Fit' in parameters:
+            is_pf = parameters['Press Fit']
+
+        return value_str, is_pf
+
     def process_build_row(self, build_item, **kwargs) -> list:
         """Process a single Build allocation row.
 
         Arguments:
             build_item: The BuildItem object to process
         """
-        # Add this row to the output dataset
+
+        # serialize row data for export
         row = self.serializer_class(build_item, exporting=True).data
+
+        # pre-processing steps for unit price, part category, part params, and BOM part name
         price = build_item.stock_item.purchase_price
+        category = build_item.stock_item.part.category
+        parameter_value, press_fit_status = self.get_parameter_value(build_item, category.name)
+        bom_part_name = build_item.bom_item.sub_part.name.removesuffix("-PV")
 
         # There are setup and overages that may be applied to builds, deviating build required quantity from BOM quantity
         # To get true net required quantity for production, multiply BOM quantity with build quantity
         req_quantity = build_item.build.quantity * build_item.bom_item.quantity
         row["required_quantity"] = req_quantity
 
-        # in instances where a stock item doesn't have an associated supplier part
+        # in instances where a stock item doesn't have an associated supplier part (i.e. no SKU)
         if build_item.stock_item.supplier_part:
             row["package_part_name"] = build_item.stock_item.supplier_part.SKU
         else:
-            row["package_part_name"] = ""
+            row["package_part_name"] = bom_part_name
 
-        row["part_name"] = build_item.bom_item.sub_part.name
-        # row['value'] = build_item.build_line.bom_item.part
-        row["value"] = ""
+        row["part_name"] = bom_part_name
+        row["parameter_value"] = parameter_value
+        row["PF"] = press_fit_status
         row["stock_location"] = build_item.stock_item.location.name if build_item.stock_item.location else ""
-        row["part_category"] = build_item.build_line.bom_item.sub_part.category.name
+        row["part_category"] = category.name
         row["stock_item_quantity"] = build_item.stock_item.quantity
         row["unit_price"] = price
         row["batch_code"] = build_item.stock_item.batch
+        row["box"] = ""
         row["stock_item_packaging"] = build_item.stock_item.packaging
+
+        # For passives: unit price above $1
+        # All other parts: unit price above $10
 
         if price and hasattr(price, 'amount'):
             unit_price = price.amount
             if(unit_price > 10):
                 row["notes"] = "EXPENSIVE PART"
+            elif(unit_price > 1 and category.parent.name == 'Passives'):
+                row["notes"] = "PASSIVE EXPENSIVE PART"
         else:
             row["notes"] = ""
             
         row["part_description"] = build_item.build_line.bom_item.sub_part.description
 
         self.build_data.append(row)
-
-    # def get_parameter_data(self, build_item: BuildItem) -> dict:
-    #     """Return parameter data for a BomItem."""
-    #     parameter_data = {}
-
-    #     for parameter in build_item.sub_part.parameters.all():
-    #         template = parameter.template
-    #         if template.pk not in self.parameters:
-    #             self.parameters[template.pk] = template.name
-
-    #         parameter_data.update({f'parameter_{template.pk}': parameter.data})
-
-    #     return parameter_data
