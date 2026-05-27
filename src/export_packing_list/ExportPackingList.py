@@ -161,46 +161,50 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         # serialize row data for export
         row = self.serializer_class(build_item, exporting=True).data
 
-        # pre-processing steps for unit price, part category, part params, and BOM part name
-        price = build_item.stock_item.purchase_price
-        category = build_item.stock_item.part.category
-        parameter_value, press_fit_status = self.get_parameter_value(build_item, category.name)
-        bom_part_name = build_item.bom_item.sub_part.name.removesuffix("-PV")
+        try:
+            # pre-processing steps to pull unit price, part category, part params, and BOM part name
+            price = build_item.stock_item.purchase_price
+            category = build_item.stock_item.part.category
+            parameter_value, press_fit_status = self.get_parameter_value(build_item, category.name)
+            bom_part_name = build_item.bom_item.sub_part.name.removesuffix("-PV")
 
-        # There are setup and overages that may be applied to builds, deviating build required quantity from BOM quantity
-        # To get true net required quantity for production, multiply BOM quantity with build quantity
-        req_quantity = build_item.build.quantity * build_item.bom_item.quantity
-        row["required_quantity"] = req_quantity
+            # There are setup and overages that may be applied to builds, deviating build required quantity from BOM quantity
+            # To get true net required quantity for production, multiply BOM quantity with build quantity
+            req_quantity = build_item.build.quantity * build_item.bom_item.quantity
+            row["required_quantity"] = req_quantity
 
-        # in instances where a stock item doesn't have an associated supplier part (i.e. no SKU)
-        if build_item.stock_item.supplier_part:
-            row["package_part_name"] = build_item.stock_item.supplier_part.SKU
-        else:
-            row["package_part_name"] = bom_part_name
+            # in instances where a stock item doesn't have an associated supplier part (i.e. no SKU)
+            if build_item.stock_item.supplier_part:
+                row["package_part_name"] = build_item.stock_item.supplier_part.SKU
+            else:
+                row["package_part_name"] = bom_part_name
 
-        row["part_name"] = bom_part_name
-        row["parameter_value"] = parameter_value
-        row["PF"] = press_fit_status
-        row["stock_location"] = build_item.stock_item.location.name if build_item.stock_item.location else ""
-        row["part_category"] = category.name
-        row["stock_item_quantity"] = build_item.stock_item.quantity
-        row["unit_price"] = price
-        row["batch_code"] = build_item.stock_item.batch
-        row["box"] = ""
-        row["stock_item_packaging"] = build_item.stock_item.packaging
+            row["part_name"] = bom_part_name
+            row["parameter_value"] = parameter_value
+            row["PF"] = press_fit_status
+            row["stock_location"] = build_item.stock_item.location.name if build_item.stock_item.location else ""
+            row["part_category"] = category.name
+            row["stock_item_quantity"] = build_item.stock_item.quantity
+            row["unit_price"] = price
+            row["batch_code"] = build_item.stock_item.batch
+            row["box"] = ""
+            row["stock_item_packaging"] = build_item.stock_item.packaging
 
-        # For passives: unit price above $1
-        # All other parts: unit price above $10
+            # For passives: unit price above $1
+            # All other parts: unit price above $10
 
-        if price and hasattr(price, 'amount'):
-            unit_price = price.amount
-            if(unit_price > 10):
-                row["notes"] = "EXPENSIVE PART"
-            elif(unit_price > 1 and category.parent.name == 'Passives'):
-                row["notes"] = "PASSIVE EXPENSIVE PART"
-        else:
-            row["notes"] = ""
-            
-        row["part_description"] = build_item.build_line.bom_item.sub_part.description
-
+            if price and hasattr(price, 'amount'):
+                unit_price = price.amount
+                if(unit_price > 10):
+                    row["notes"] = "EXPENSIVE PART"
+                elif(unit_price > 1 and category.parent.name == 'Passives'):
+                    row["notes"] = "PASSIVE EXPENSIVE PART"
+            else:
+                row["notes"] = ""
+                
+            row["part_description"] = build_item.build_line.bom_item.sub_part.description
+        except Exception as e:
+            row["part_name"] = "ERROR - could not pull data"
+            row["parameter_value"] = e
+        
         self.build_data.append(row)
