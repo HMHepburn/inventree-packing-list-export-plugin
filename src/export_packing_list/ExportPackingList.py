@@ -1,4 +1,5 @@
 import rest_framework.serializers as serializers
+import re
 from plugin import InvenTreePlugin
 from plugin.mixins import DataExportMixin
 
@@ -37,61 +38,37 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         from build.models import BuildItem
 
         return issubclass(model_class, BuildItem)
+    
+    # Override to generate a custom filename upon exporting
+    def generate_filename(self, model_class, export_format: str) -> str:
+        build_name = model_class.__name__
 
+        return f"{build_name}-packinglist.{export_format}"
+    
     def get_export_formats(self):
         return ['csv', 'xlsx']
     
     def update_headers(self, headers, context, **kwargs):
         """Update headers for the packing list export."""
-
         export_extra_headers = context.get("export_extra_headers", True)
 
         # Remove data from the headers
         if not export_extra_headers:
             headers.clear()
 
-        # Append a 'required quantity' field
         headers["required_quantity"] = "Required Qty"
-
-        # Append a 'package_part_name' field
         headers["package_part_name"] = "Package Part Name"
-
-        # Append a 'part_name' field
         headers["part_name"] = "BOM MPN"
-
-        # # *** For part name - might need to remove the '-PV' at the end of the part strings, but we can leave this for now
-
-        # Append a 'parameter_value' field
         headers["parameter_value"] = "Value"
-
-        # Append a 'PF' field
         headers["PF"] = "Press Fit"
-
-        # Append a 'stock_location' field
         headers["stock_location"] = "Location"
-
-        # Append a 'part_category' field
         headers["part_category"] = "Category"
-
-        # Append a 'stock_item_quantity' field
         headers["stock_item_quantity"] = "Available Qty"
-
-        # Append a 'unit_price' field
         headers["unit_price"] = "Unit Price"
-
-        # Append a 'batch_code' field
         headers["batch_code"] = "PV IPN"
-
-        # Append a box field - to be filled in manually by person kitting.
         headers["box"] = "Box"
-
-        # Append a 'stock_item_packaging' field
         headers["stock_item_packaging"] = "Condition/Packaging"
-
-        # Append a 'notes' field - Notes could be conditional depending on item price*
         headers["notes"] = "Notes"
-
-        # Append a 'part_description' field
         headers["part_description"] = "Part Description"
 
         return headers
@@ -103,7 +80,10 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
             "build_line__bom_item",
             "stock_item",  # Join the stock item table
             "stock_item__part",  # Join the part table
-            "stock_item__supplier_part",  # Join the supplier part table
+            "stock_item__part__category",
+            "stock_item__part__category__parent",
+            "stock_item__supplier_part",
+            "stock_item__location",
         )
 
         return queryset
@@ -117,11 +97,18 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         # Pre-fetch related data to reduce database queries
         queryset = self.prefetch_queryset(queryset)
 
+        # first_item = queryset.first()
+        # if first_item and first_item.build and first_item.build.part:
+        #     self.generate_filename(first_item.build.part.name)
+
         self.build_data = []
 
         # Run through each item in the queryset
         for build_item in queryset:
             self.process_build_row(build_item, **kwargs)
+
+        # Apply multi-condition sorting
+        self.build_data.sort(key=self._get_sort_key)
 
         return self.build_data
 
@@ -151,6 +138,43 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
 
         return value_str, is_pf
 
+    def _parse_numeric_value(self, val_str: str) -> float:
+        """Helper function to turn component SI strings (e.g. '10k', '100nF') into float numbers for sorting."""
+        if not val_str:
+            return 0.0
+
+        multipliers = {
+            "p": 1e-12, "n": 1e-9, "u": 1e-6, "µ": 1e-6,
+            "m": 1e-3, "k": 1e3, "M": 1e6, "G": 1e9,
+        }
+
+        # Use regex to isolate different parameter values
+        match = re.search(r"([0-9.]+)\s*([pnumµkMG])?", str(val_str))
+        if match:
+            number = float(match.group(1))
+            unit = match.group(2)
+            return number * multipliers.get(unit, 1.0)
+        return 0.0
+
+    def _get_sort_key(self, row: dict) -> tuple:
+        """Returns a comparison tuple based on specified priority sorting rules."""
+        loc = (row.get("stock_location") or "").lower()
+        pf = (row.get("PF") or "").lower()
+        parent_cat = (row.get("parent_category") or "").lower()
+        cat = (row.get("part_category") or "").lower()
+        pkg = (row.get("stock_item_packaging") or "").lower()
+        part_name = (row.get("part_name") or "").lower()
+
+        is_passive_component = parent_cat is "Passives"
+
+        if is_passive_component:
+            # Type 0: Passive group branch
+            parsed_val = self._parse_numeric_value(row.get("parameter_value", ""))
+            return (loc, pf, 0, cat, pkg, parsed_val, "")
+        else:
+            # Type 1: Standard part branch
+            return (loc, pf, 1, "", "", 0.0, part_name)
+        
     def process_build_row(self, build_item, **kwargs) -> list:
         """Process a single Build allocation row.
 
@@ -163,8 +187,12 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
 
         try:
             # pre-processing steps to pull unit price, part category, part params, and BOM part name
-            price = build_item.stock_item.purchase_price
-            category = build_item.stock_item.part.category
+            stock_item = build_item.stock_item
+            price = stock_item.purchase_price
+            category = stock_item.part.category if stock_item and stock_item.part else None
+            category_name = category.name if category else ""
+            parent_category_name = category.parent.name if category and category.parent else ""
+
             parameter_value, press_fit_status = self.get_parameter_value(build_item, category.name)
             bom_part_name = build_item.bom_item.sub_part.name.removesuffix("-PV")
 
@@ -182,22 +210,23 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
             row["part_name"] = bom_part_name
             row["parameter_value"] = parameter_value
             row["PF"] = press_fit_status
-            row["stock_location"] = build_item.stock_item.location.name if build_item.stock_item.location else ""
-            row["part_category"] = category.name
-            row["stock_item_quantity"] = build_item.stock_item.quantity
+            row["stock_location"] = stock_item.location.name if stock_item and stock_item.location else ""
+            row["part_category"] = category_name
+            row["parent_category"] = parent_category_name  # Used for sorting internal logic
+            row["stock_item_quantity"] = stock_item.quantity
             row["unit_price"] = price
-            row["batch_code"] = build_item.stock_item.batch
+            row["batch_code"] = stock_item.batch
             row["box"] = ""
-            row["stock_item_packaging"] = build_item.stock_item.packaging
+            row["stock_item_packaging"] = stock_item.packaging or ""
 
             # For passives: unit price above $1
             # All other parts: unit price above $10
 
-            if price and hasattr(price, 'amount'):
+            if price and hasattr(price, "amount"):
                 unit_price = price.amount
                 if(unit_price > 10):
                     row["notes"] = "EXPENSIVE PART"
-                elif(unit_price > 1 and category.parent.name == 'Passives'):
+                elif(unit_price > 1 and category.parent.name == "Passives"):
                     row["notes"] = "PASSIVE EXPENSIVE PART"
             else:
                 row["notes"] = ""
@@ -205,6 +234,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
             row["part_description"] = build_item.build_line.bom_item.sub_part.description
         except Exception as e:
             row["part_name"] = "ERROR - could not pull data"
-            row["parameter_value"] = e
+            row["parameter_value"] = str(e)
+            row["parent_category"] = ""
         
         self.build_data.append(row)
