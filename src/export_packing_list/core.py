@@ -1,8 +1,8 @@
 import re
 
-from rest_framework import serializers
 from plugin import InvenTreePlugin
 from plugin.mixins import DataExportMixin
+from rest_framework import serializers
 
 from . import PLUGIN_VERSION
 
