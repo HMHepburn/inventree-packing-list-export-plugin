@@ -1,5 +1,6 @@
-import rest_framework.serializers as serializers
 import re
+
+from rest_framework import serializers
 from plugin import InvenTreePlugin
 from plugin.mixins import DataExportMixin
 
@@ -153,7 +154,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         if match:
             number = float(match.group(1))
             unit = match.group(2)
-            return number * multipliers.get(unit, 1.0)
+            return float(number * multipliers.get(unit, 1.0))
         return 0.0
 
     def _get_sort_key(self, row: dict) -> tuple:
@@ -164,12 +165,18 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         cat = (row.get("part_category") or "").lower()
         pkg = (row.get("stock_item_packaging") or "").lower()
         part_name = (row.get("part_name") or "").lower()
+        parameter_val = (row.get("parameter_value") or 0.0)
 
-        is_passive_component = parent_cat is "Passives"
+        if (pf == "true" or pf == "True"):
+            pf = 0
+        else:
+            pf = 1
+
+        is_passive_component = parent_cat == "Passives"
 
         if is_passive_component:
             # Type 0: Passive group branch
-            parsed_val = self._parse_numeric_value(row.get("parameter_value", ""))
+            parsed_val = self._parse_numeric_value(parameter_val)
             return (loc, pf, 0, cat, pkg, parsed_val, "")
         else:
             # Type 1: Standard part branch
@@ -232,7 +239,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
                 row["notes"] = ""
                 
             row["part_description"] = build_item.build_line.bom_item.sub_part.description
-        except Exception as e:
+        except ValueError as e:
             row["part_name"] = "ERROR - could not pull data"
             row["parameter_value"] = str(e)
             row["parent_category"] = ""

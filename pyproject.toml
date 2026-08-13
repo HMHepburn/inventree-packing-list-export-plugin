@@ -29,7 +29,7 @@ classifiers = [
 ]
 
 [project.entry-points."inventree_plugins"]
-export-packing-list = "export_packing_list.ExportPackingList:ExportPackingList"
+export-packing-list = "export_packing_list.core:ExportPackingList"
 
 [tool.setuptools.packages.find]
 where = ["src"]
