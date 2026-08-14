@@ -172,7 +172,7 @@ class ExportPackingList(InvenTreePlugin, DataExportMixin):
         else:
             pf = 1
 
-        is_passive_component = parent_cat == "Passives"
+        is_passive_component = parent_cat == "passives"
 
         if is_passive_component:
             # Type 0: Passive group branch
